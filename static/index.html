@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教务管理系统 | Academic Management</title>
+    <!-- Elegant Fonts: Noto Serif SC for headings, Inter for body -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 登录界面 -->
+        <div id="login-view" class="view active">
+            <div class="login-split">
+                <div class="login-branding">
+                    <div class="branding-content">
+                        <h1>教务管理系统</h1>
+                        <p>Academic Management System</p>
+                        <div class="branding-decoration"></div>
+                    </div>
+                </div>
+                <div class="login-form-container">
+                    <div class="login-card">
+                        <h2>用户登录 / Sign In</h2>
+                        <form id="login-form">
+                            <div class="input-group">
+                                <label for="username"><i class="fa-solid fa-user"></i> 账号 (Username)</label>
+                                <input type="text" id="username" required autocomplete="off" placeholder="请输入您的账号">
+                            </div>
+                            <div class="input-group">
+                                <label for="password"><i class="fa-solid fa-lock"></i> 密码 (Password)</label>
+                                <input type="password" id="password" required placeholder="请输入您的密码">
+                            </div>
+                            <button type="submit" class="btn primary-btn">进入系统</button>
+                            <div id="login-error" class="error-msg"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 仪表盘主体 -->
+        <div id="dashboard-layout" class="view hidden">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <i class="fa-solid fa-university logo-icon"></i>
+                    <span class="logo-text">教务系统</span>
+                </div>
+                <ul class="sidebar-nav">
+                    <li class="nav-item active"><a href="#"><i class="fa-solid fa-border-all"></i> 总览 (Dashboard)</a></li>
+                </ul>
+                <div class="sidebar-footer">
+                    <div class="user-badge">
+                        <div class="avatar"><i class="fa-solid fa-user-tie"></i></div>
+                        <div class="user-info">
+                            <span id="nav-user-name" class="name">User</span>
+                            <span id="nav-user-role" class="role">Role</span>
+                        </div>
+                    </div>
+                    <button id="logout-btn" class="btn text-btn"><i class="fa-solid fa-sign-out-alt"></i> 退出</button>
+                </div>
+            </aside>
+            
+            <main class="main-content">
+                <header class="topbar">
+                    <div class="page-title">
+                        <h2 id="page-header-title">控制面板</h2>
+                        <p id="date-display">Today is a good day to learn.</p>
+                    </div>
+                </header>
+
+                <div class="dashboard-scroll">
+                    
+                    <!-- 管理员面板 -->
+                    <div id="admin-dashboard" class="role-dashboard hidden">
+                        <!-- 统计卡片 -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+                                <div class="stat-details">
+                                    <h3>系统用户总数</h3>
+                                    <div class="stat-value" id="admin-total-users">-</div>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon blue"><i class="fa-solid fa-book-open"></i></div>
+                                <div class="stat-details">
+                                    <h3>开设课程总数</h3>
+                                    <div class="stat-value" id="admin-total-courses">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 用户管理区 -->
+                        <div class="content-row">
+                            <div class="panel flex-1">
+                                <div class="panel-header">
+                                    <h3>新建用户 / New User</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <form id="create-user-form" class="solemn-form">
+                                        <div class="input-group">
+                                            <label>用户名 (Username)</label>
+                                            <input type="text" id="new-user-username" required autocomplete="off">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>姓名 (Full Name)</label>
+                                            <input type="text" id="new-user-name" required autocomplete="off">
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="input-group flex-1">
+                                                <label>角色 (Role)</label>
+                                                <select id="new-user-role" required>
+                                                    <option value="student">学生 (Student)</option>
+                                                    <option value="teacher">教师 (Teacher)</option>
+                                                    <option value="admin">管理员 (Admin)</option>
+                                                </select>
+                                            </div>
+                                            <div class="input-group flex-1">
+                                                <label>初始密码</label>
+                                                <input type="text" id="new-user-password" value="123456" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn primary-btn full-width">添加用户</button>
+                                    </form>
+                                </div>
+                            </div>
+                            
+                            <div class="panel flex-2">
+                                <div class="panel-header flex-between">
+                                    <h3>用户列表 / User List</h3>
+                                    <select id="user-role-filter" class="table-filter" onchange="renderAdminUsers()">
+                                        <option value="all">所有用户 (All)</option>
+                                        <option value="teacher">仅教师 (Teachers)</option>
+                                        <option value="student">仅学生 (Students)</option>
+                                        <option value="admin">仅管理员 (Admins)</option>
+                                    </select>
+                                </div>
+                                <div class="panel-body p-0">
+                                    <div class="table-scroll-container">
+                                        <table class="solemn-table" id="admin-users-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th><th>用户名</th><th>姓名</th><th>角色</th><th>操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 课程管理混合图表与数据区 -->
+                        <div class="content-row">
+                            <div class="panel flex-2">
+                                <div class="panel-header">
+                                    <h3>系统概况 / System Overview</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <canvas id="adminStatsChart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <div class="panel flex-1">
+                                <div class="panel-header">
+                                    <h3>新建课程 / New Course</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <form id="create-course-form" class="solemn-form">
+                                        <div class="input-group">
+                                            <label>课程名称</label>
+                                            <input type="text" id="new-course-name" required>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="input-group">
+                                                <label>学分</label>
+                                                <input type="number" id="new-credits" value="3" min="1" max="10" required>
+                                            </div>
+                                            <div class="input-group">
+                                                <label>容量</label>
+                                                <input type="number" id="new-capacity" value="50" min="1" max="500" required>
+                                            </div>
+                                        </div>
+                                        <div class="input-group">
+                                            <label>授课教师</label>
+                                            <select id="new-course-teacher">
+                                                <option value="">暂不分配 (None)</option>
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="btn primary-btn full-width">添加课程</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row">
+                            <div class="panel flex-1">
+                                <div class="panel-header">
+                                    <h3>课程管理 / Course Management</h3>
+                                </div>
+                                <div class="panel-body p-0">
+                                    <table class="solemn-table" id="admin-courses-table">
+                                        <thead>
+                                            <tr>
+                                                <th>编号</th><th>课程名称</th><th>学分</th><th>容量</th><th>授课教师</th><th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 教师面板 -->
+                    <div id="teacher-dashboard" class="role-dashboard hidden">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
+                                <div class="stat-details">
+                                    <h3>我教授的课程</h3>
+                                    <div class="stat-value" id="teacher-total-courses">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row">
+                            <div class="panel flex-1">
+                                <div class="panel-header">
+                                    <h3>我的课程 / My Courses</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <div class="course-cards" id="teacher-courses-grid"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 选课学生及成绩分布 (隐藏区) -->
+                        <div id="teacher-course-detail" class="hidden">
+                            <hr class="divider">
+                            <div class="flex-between mb-2">
+                                <h2 id="teacher-detail-title" class="section-title">课程详情</h2>
+                                <button class="btn default-btn" id="close-detail-btn"><i class="fa-solid fa-arrow-left"></i> 返回</button>
+                            </div>
+                            
+                            <div class="content-row">
+                                <div class="panel flex-2">
+                                    <div class="panel-header">
+                                        <h3>成绩分布 / Grade Distribution</h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <canvas id="teacherGradeChart"></canvas>
+                                    </div>
+                                </div>
+                                
+                                <div class="panel flex-3">
+                                    <div class="panel-header">
+                                        <h3>学生名单 / Enrolled Students</h3>
+                                    </div>
+                                    <div class="panel-body p-0">
+                                        <table class="solemn-table" id="teacher-students-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>学号</th><th>姓名</th><th>成绩</th><th>操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 学生面板 -->
+                    <div id="student-dashboard" class="role-dashboard hidden">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon green"><i class="fa-solid fa-graduation-cap"></i></div>
+                                <div class="stat-details">
+                                    <h3>已修学分</h3>
+                                    <div class="stat-value" id="student-total-credits">-</div>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon orange"><i class="fa-solid fa-star"></i></div>
+                                <div class="stat-details">
+                                    <h3>平均成绩 (GPA)</h3>
+                                    <div class="stat-value" id="student-gpa">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row">
+                            <div class="panel flex-2">
+                                <div class="panel-header">
+                                    <h3>学业雷达图 / Academic Radar</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <canvas id="studentRadarChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="panel flex-3">
+                                <div class="panel-header">
+                                    <h3>我的选课 / My Enrollments</h3>
+                                </div>
+                                <div class="panel-body p-0">
+                                    <table class="solemn-table" id="student-my-courses-table">
+                                        <thead>
+                                            <tr>
+                                                <th>课程名称</th><th>教师</th><th>学分</th><th>成绩</th><th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row mt-2">
+                            <div class="panel flex-1">
+                                <div class="panel-header">
+                                    <h3>可选课程 / Available Courses</h3>
+                                </div>
+                                <div class="panel-body p-0">
+                                    <table class="solemn-table" id="student-all-courses-table">
+                                        <thead>
+                                            <tr>
+                                                <th>课程名称</th><th>教师</th><th>学分</th><th>余量</th><th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    
+    <!-- Edit Course Modal -->
+    <div id="edit-course-modal" class="modal-overlay hidden">
+        <div class="modal-card panel">
+            <div class="panel-header flex-between">
+                <h3>修改课程 / Edit Course</h3>
+                <button class="btn text-btn" onclick="document.getElementById('edit-course-modal').classList.add('hidden')"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="panel-body">
+                <form id="edit-course-form" class="solemn-form">
+                    <input type="hidden" id="edit-course-id">
+                    <div class="input-group">
+                        <label>课程名称</label>
+                        <input type="text" id="edit-course-name-field" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>学分</label>
+                            <input type="number" id="edit-course-credits-field" min="1" max="10" required>
+                        </div>
+                        <div class="input-group">
+                            <label>容量</label>
+                            <input type="number" id="edit-course-capacity-field" min="1" max="500" required>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>授课教师</label>
+                        <select id="edit-course-teacher-field">
+                            <option value="">暂不分配 (None)</option>
+                        </select>
+                    </div>
+                    <div class="flex-between mt-2">
+                        <button type="button" class="btn default-btn" onclick="document.getElementById('edit-course-modal').classList.add('hidden')">取消</button>
+                        <button type="submit" class="btn primary-btn">保存修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Message -->
+    <div id="toast" class="toast"><i class="fa-solid fa-circle-info"></i> <span id="toast-msg">Message</span></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
