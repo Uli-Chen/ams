@@ -58,13 +58,17 @@ async def seed_data():
             name="Database Systems",
             teacher_id=teacher1.id,
             credits=3,
-            capacity=30
+            capacity=30,
+            class_time="Mon 10:00-12:00",
+            class_location="Room 201",
         )
         course2 = Course(
             name="Web Development",
             teacher_id=teacher2.id,
             credits=4,
-            capacity=40
+            capacity=40,
+            class_time="Wed 14:00-16:00",
+            class_location="Lab 3",
         )
         
         session.add_all([course1, course2])

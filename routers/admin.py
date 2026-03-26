@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete, update
-from models import User, Course, Enrollment, RoleEnum
-from schemas import UserCreate, UserResponse, CourseCreate, CourseResponse, CourseUpdate
+from models import User, Course, Enrollment, RoleEnum, Notification
+from schemas import UserCreate, UserResponse, CourseCreate, CourseResponse, CourseUpdate, AnnouncementCreateRequest
 from database import get_db
 from security import require_role
 from routers.auth import get_password_hash
@@ -104,12 +104,43 @@ async def get_users(db: AsyncSession = Depends(get_db), current_user: User = Dep
 async def get_courses(db: AsyncSession = Depends(get_db), current_user: User = Depends(require_role([RoleEnum.admin, RoleEnum.student, RoleEnum.teacher]))):
     result = await db.execute(select(Course))
     courses = result.scalars().all()
-    # attach teacher name
+    # attach teacher name and enrollment summary for UI display
     for c in courses:
         if c.teacher_id:
             res_t = await db.execute(select(User).where(User.id == c.teacher_id))
             teacher = res_t.scalars().first()
             c.teacher_name = teacher.name if teacher else None
+        res_e = await db.execute(select(Enrollment).where(Enrollment.course_id == c.id))
+        enrolled_count = len(res_e.scalars().all())
+        c.enrolled_count = enrolled_count
+        c.remaining_capacity = max(c.capacity - enrolled_count, 0)
     return courses
 
+
+@router.post("/announcements")
+async def send_announcement(
+    payload: AnnouncementCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([RoleEnum.admin])),
+):
+    # Create one notification row per user so "read/unread" works for everyone.
+    users_res = await db.execute(select(User))
+    users = users_res.scalars().all()
+
+    new_notifications: list[Notification] = []
+    for u in users:
+        new_notifications.append(
+            Notification(
+                sender_id=current_user.id,
+                recipient_id=u.id,
+                notif_type="announcement",
+                title=payload.title,
+                content=payload.content,
+                is_read=False,
+            )
+        )
+
+    db.add_all(new_notifications)
+    await db.commit()
+    return {"message": "Announcement sent"}
 

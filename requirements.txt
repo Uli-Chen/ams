@@ -7,3 +7,5 @@ cryptography
 pydantic
 passlib[bcrypt]
 pyjwt
+python-multipart
+greenlet

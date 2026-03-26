@@ -4,7 +4,7 @@ def create_database_if_not_exists():
     connection = pymysql.connect(
         host='localhost',
         user='root',
-        password='Jilin@123',
+        password='zhang.12',
         port=3306
     )
     try:

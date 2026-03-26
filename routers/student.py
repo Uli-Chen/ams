@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 from models import User, Course, Enrollment, RoleEnum
 from database import get_db
 from security import require_role
+from models import Notification
 
 router = APIRouter()
 
@@ -17,6 +18,21 @@ async def enroll_course(course_id: int, db: AsyncSession = Depends(get_db), curr
     res_e = await db.execute(select(Enrollment).where(Enrollment.course_id == course_id, Enrollment.student_id == current_user.id))
     if res_e.scalars().first():
         raise HTTPException(status_code=400, detail="Already enrolled")
+
+    # Prevent selecting courses with the exact same class time string.
+    if course.class_time:
+        res_my_courses = await db.execute(
+            select(Course)
+            .join(Enrollment, Enrollment.course_id == Course.id)
+            .where(Enrollment.student_id == current_user.id)
+        )
+        enrolled_courses = res_my_courses.scalars().all()
+        for enrolled_course in enrolled_courses:
+            if enrolled_course.class_time and enrolled_course.class_time.strip() == course.class_time.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Course time conflict with {enrolled_course.name}",
+                )
         
     # check capacity
     res_count = await db.execute(select(Enrollment).where(Enrollment.course_id == course_id))
@@ -26,6 +42,20 @@ async def enroll_course(course_id: int, db: AsyncSession = Depends(get_db), curr
         
     new_enrollment = Enrollment(student_id=current_user.id, course_id=course_id)
     db.add(new_enrollment)
+
+    # Notify the teacher about successful enrollment
+    if course.teacher_id is not None:
+        new_notif = Notification(
+            sender_id=current_user.id,
+            recipient_id=course.teacher_id,
+            notif_type="enrollment",
+            title="有新选课学生 / New Enrollment",
+            content=f"{current_user.name} 已选修《{course.name}》",
+            related_course_id=course.id,
+            is_read=False,
+        )
+        db.add(new_notif)
+
     await db.commit()
     return {"message": "Enrolled successfully"}
 
@@ -61,6 +91,9 @@ async def get_my_courses(db: AsyncSession = Depends(get_db), current_user: User 
             "course_id": course.id,
             "course_name": course.name,
             "credits": course.credits,
+            "class_time": course.class_time,
+            "class_location": course.class_location,
+            "teacher_id": course.teacher_id,
             "teacher_name": teacher_name,
             "grade": enrollment.grade
         })

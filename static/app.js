@@ -5,13 +5,18 @@ let state = {
     token: localStorage.getItem('token') || null,
     role: null,
     userId: null,
-    username: null
+    username: null,
+    avatarUrl: null,
+    phoneNumber: null
 };
 
 // Charts refs
 let adminChartInst = null;
 let teacherChartInst = null;
 let studentChartInst = null;
+
+// Cache for student exports / timetable
+let myCoursesData = [];
 
 // Elements
 const viewLogin = document.getElementById('login-view');
@@ -126,6 +131,10 @@ async function showDashboard() {
     if (state.role === 'admin') loadAdminData();
     if (state.role === 'teacher') loadTeacherData();
     if (state.role === 'student') loadStudentData();
+
+    // Common modules
+    loadMeAndFillUI();
+    loadNotifications();
 }
 
 // ==== Admin ====
@@ -181,9 +190,11 @@ async function loadAdminData() {
                 <td><strong>${c.name}</strong></td>
                 <td>${c.credits}</td>
                 <td>${c.capacity}</td>
+                <td>${c.class_time || '-'}</td>
+                <td>${c.class_location || '-'}</td>
                 <td>${c.teacher_name ? `<span class="badge" style="color:var(--primary)"><i class="fa-solid fa-chalkboard-user"></i> ${c.teacher_name}</span>` : `<span style="color:var(--text-muted)">未分配</span>`}</td>
                 <td>
-                    <button class="btn default-btn sm-btn" onclick="openEditCourseModal(${c.id}, '${c.name.replace(/'/g, "\\'")}', ${c.credits}, ${c.capacity}, ${c.teacher_id || 'null'})"><i class="fa-solid fa-pen"></i></button>
+                    <button class="btn default-btn sm-btn" onclick="openEditCourseModal(${c.id}, '${c.name.replace(/'/g, "\\'")}', ${c.credits}, ${c.capacity}, ${c.teacher_id || 'null'}, '${(c.class_time || '').replace(/'/g, "\\'")}', '${(c.class_location || '').replace(/'/g, "\\'")}')"><i class="fa-solid fa-pen"></i></button>
                     <button class="btn danger-btn sm-btn" onclick="deleteCourse(${c.id}, '${c.name.replace(/'/g, "\\'")}')"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
@@ -220,7 +231,9 @@ document.getElementById('create-course-form').addEventListener('submit', async (
                 name: document.getElementById('new-course-name').value,
                 credits: parseInt(document.getElementById('new-credits').value),
                 capacity: parseInt(document.getElementById('new-capacity').value),
-                teacher_id: tId ? parseInt(tId) : null
+                teacher_id: tId ? parseInt(tId) : null,
+                class_time: document.getElementById('new-course-time').value,
+                class_location: document.getElementById('new-course-location').value,
             }
         });
         showToast('新课程添加成功 / Course Created');
@@ -256,11 +269,13 @@ window.deleteUser = async (id, username) => {
     } catch (err) { showToast(err.message, true); }
 };
 
-window.openEditCourseModal = (id, name, credits, capacity, teacherId) => {
+window.openEditCourseModal = (id, name, credits, capacity, teacherId, classTime, classLocation) => {
     document.getElementById('edit-course-id').value = id;
     document.getElementById('edit-course-name-field').value = name;
     document.getElementById('edit-course-credits-field').value = credits;
     document.getElementById('edit-course-capacity-field').value = capacity;
+    document.getElementById('edit-course-time-field').value = classTime || '';
+    document.getElementById('edit-course-location-field').value = classLocation || '';
     
     // Copy options from "new-course-teacher" select
     const teacherSelect = document.getElementById('edit-course-teacher-field');
@@ -281,7 +296,9 @@ document.getElementById('edit-course-form').addEventListener('submit', async (e)
                 name: document.getElementById('edit-course-name-field').value,
                 credits: parseInt(document.getElementById('edit-course-credits-field').value),
                 capacity: parseInt(document.getElementById('edit-course-capacity-field').value),
-                teacher_id: tId ? parseInt(tId) : null
+                teacher_id: tId ? parseInt(tId) : null,
+                class_time: document.getElementById('edit-course-time-field').value,
+                class_location: document.getElementById('edit-course-location-field').value,
             }
         });
         showToast('课程修改成功 / Course Updated');
@@ -316,19 +333,56 @@ async function loadTeacherData() {
         grid.innerHTML = courses.map(c => `
             <div class="course-card">
                 <h4><i class="fa-solid fa-book"></i> ${c.name}</h4>
-                <p>学分: ${c.credits} | 容量: ${c.capacity}</p>
-                <button class="btn primary-btn sm-btn" onclick="viewCourseDetails(${c.id}, '${c.name.replace(/'/g, "\\'")}')">
-                    查看详情 <i class="fa-solid fa-chevron-right"></i>
-                </button>
+                <p>学分: ${c.credits} | ${c.class_time || '-'} | ${c.class_location || '-'}</p>
+                <div class="flex-between" style="gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
+                    <button class="btn default-btn sm-btn" onclick="openTeacherEditCourseModal(${c.id}, '${c.name.replace(/'/g, "\\'")}', '${(c.class_time || '').replace(/'/g, "\\'")}', '${(c.class_location || '').replace(/'/g, "\\'")}')">
+                        调整安排
+                    </button>
+                    <button class="btn primary-btn sm-btn" onclick="viewCourseDetails(${c.id}, '${c.name.replace(/'/g, "\\'")}')">
+                        查看详情 <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
         `).join('');
     } catch(err) { showToast(err.message, true); }
 }
 
+window.openTeacherEditCourseModal = (courseId, courseName, classTime, classLocation) => {
+    document.getElementById('teacher-edit-course-id').value = courseId;
+    document.getElementById('teacher-edit-course-name').value = courseName;
+    document.getElementById('teacher-edit-course-time').value = classTime || '';
+    document.getElementById('teacher-edit-course-location').value = classLocation || '';
+    document.getElementById('teacher-edit-course-modal').classList.remove('hidden');
+};
+
+document.getElementById('teacher-edit-course-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        const id = document.getElementById('teacher-edit-course-id').value;
+        await apiCall(`/teacher/courses/${id}`, {
+            method: 'PUT',
+            body: {
+                class_time: document.getElementById('teacher-edit-course-time').value,
+                class_location: document.getElementById('teacher-edit-course-location').value,
+            }
+        });
+        document.getElementById('teacher-edit-course-modal').classList.add('hidden');
+        showToast('课程安排已更新');
+        await loadTeacherData();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
+
 window.viewCourseDetails = async (courseId, courseName) => {
     try {
-        const students = await apiCall(`/teacher/courses/${courseId}/students`);
-        document.getElementById('teacher-detail-title').textContent = courseName;
+        const data = await apiCall(`/teacher/courses/${courseId}/students`);
+        const students = data.students || [];
+        const course = data.course || {};
+
+        document.getElementById('teacher-detail-title').textContent = courseName || course.course_name || '-';
+        document.getElementById('teacher-detail-schedule').textContent =
+            `${course.class_time || '-'} / ${course.class_location || '-'}`;
         document.getElementById('teacher-course-detail').classList.remove('hidden');
         
         const tbody = document.querySelector('#teacher-students-table tbody');
@@ -345,6 +399,9 @@ window.viewCourseDetails = async (courseId, courseName) => {
                     </td>
                     <td>
                         <button class="btn default-btn sm-btn" onclick="updateGrade(${s.enrollment_id}, this)">保存</button>
+                        <button class="btn primary-btn sm-btn" onclick="openMessageModal(${s.student_id}, '${(s.student_name || '').replace(/'/g, "\\'")}', ${courseId})" style="margin-left:0.5rem;">
+                            发消息
+                        </button>
                     </td>
                 </tr>
             `).join('');
@@ -424,7 +481,7 @@ async function loadStudentData() {
 
         const tbodyMy = document.querySelector('#student-my-courses-table tbody');
         if(myCourses.length === 0) {
-            tbodyMy.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#7f8c8d;">你还未选修任何课程 / No enrollments yet.</td></tr>`;
+            tbodyMy.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#7f8c8d;">你还未选修任何课程 / No enrollments yet.</td></tr>`;
         } else {
             tbodyMy.innerHTML = myCourses.map(c => {
                 if (c.grade !== null) {
@@ -438,9 +495,14 @@ async function loadStudentData() {
                 <tr>
                     <td><strong>${c.course_name}</strong></td>
                     <td>${c.teacher_name || '-'}</td>
+                    <td>${c.class_time || '-'}</td>
+                    <td>${c.class_location || '-'}</td>
                     <td>${c.credits}</td>
                     <td>${c.grade !== null ? `<strong style="color:var(--primary)">${c.grade}</strong>` : '<span style="color:#bdc3c7">-</span>'}</td>
-                    <td><button class="btn danger-btn sm-btn" onclick="unenrollCourse(${c.course_id})">退选 (Drop)</button></td>
+                    <td>
+                        <button class="btn danger-btn sm-btn" onclick="unenrollCourse(${c.course_id})">退选 (Drop)</button>
+                        ${c.teacher_id ? `<button class="btn default-btn sm-btn" style="margin-left:0.5rem;" onclick="openMessageModal(${c.teacher_id}, '${(c.teacher_name || '').replace(/'/g, "\\'")}', ${c.course_id})">消息老师</button>` : ''}
+                    </td>
                 </tr>`;
             }).join('');
         }
@@ -453,8 +515,10 @@ async function loadStudentData() {
             <tr>
                 <td><strong>${c.name}</strong></td>
                 <td>${c.teacher_name || '-'}</td>
+                <td>${c.class_time || '-'}</td>
+                <td>${c.class_location || '-'}</td>
                 <td>${c.credits}</td>
-                <td>${c.capacity}</td>
+                <td>${c.remaining_capacity ?? c.capacity}</td>
                 <td>
                     ${myCourseIds.has(c.id) 
                         ? '<span class="btn success-btn sm-btn" style="pointer-events:none;"><i class="fa-solid fa-check"></i> 已选修</span>'
@@ -463,6 +527,24 @@ async function loadStudentData() {
                 </td>
             </tr>
         `).join('');
+
+        // Timetable
+        myCoursesData = myCourses;
+        const tbodyTT = document.querySelector('#student-timetable-table tbody');
+        if(myCourses.length === 0) {
+            tbodyTT.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#7f8c8d;">暂无课表数据</td></tr>`;
+        } else {
+            tbodyTT.innerHTML = myCourses.map(c => `
+                <tr>
+                    <td><strong>${c.course_name}</strong></td>
+                    <td>${c.teacher_name || '-'}</td>
+                    <td>${c.class_time || '-'}</td>
+                    <td>${c.class_location || '-'}</td>
+                    <td>${c.credits}</td>
+                    <td>${c.grade !== null ? `<strong style="color:var(--primary)">${c.grade}</strong>` : '<span style="color:#bdc3c7">-</span>'}</td>
+                </tr>
+            `).join('');
+        }
 
         // Student Visualization: Radar
         const ctx = document.getElementById('studentRadarChart').getContext('2d');
@@ -507,5 +589,296 @@ window.unenrollCourse = async (courseId) => {
         loadStudentData();
     } catch(err) { showToast(err.message, true); }
 };
+
+// ==== Common: Profile / Notifications / Messaging / Exports ====
+
+function escapeHtml(str) {
+    return String(str ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function formatDateTime(dt) {
+    try {
+        return new Date(dt).toLocaleString('zh-CN');
+    } catch (_) {
+        return dt;
+    }
+}
+
+async function loadMeAndFillUI() {
+    try {
+        const me = await apiCall('/profile/me');
+        state.avatarUrl = me.avatar_url || null;
+        state.phoneNumber = me.phone_number || null;
+
+        document.getElementById('nav-user-name').textContent = me.name || me.username;
+        document.getElementById('profile-name').value = me.name || '';
+        document.getElementById('profile-phone').value = me.phone_number || '';
+
+        const navAvatarImg = document.getElementById('nav-avatar-img');
+        const navAvatarIcon = document.getElementById('nav-avatar-icon');
+        const preview = document.getElementById('profile-avatar-preview');
+        if (me.avatar_url) {
+            navAvatarImg.src = me.avatar_url;
+            navAvatarImg.style.display = 'block';
+            navAvatarIcon.style.display = 'none';
+            preview.src = me.avatar_url;
+        } else {
+            navAvatarImg.style.display = 'none';
+            navAvatarIcon.style.display = 'flex';
+            preview.src = '';
+        }
+    } catch (err) {
+        // profile is not critical for main features
+        console.warn('loadMeAndFillUI failed:', err);
+    }
+}
+
+function renderNotifications(items) {
+    const tbody = document.querySelector('#notifications-table tbody');
+    const unread = items.filter(n => !n.is_read).length;
+    document.getElementById('notifications-unread-count').textContent = `${unread} 未读`;
+
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">暂无通知 / No notifications</td></tr>`;
+        return;
+    }
+
+    const typeLabel = (t) => {
+        if (t === 'announcement') return '系统公告';
+        if (t === 'enrollment') return '选课通知';
+        if (t === 'grade') return '成绩通知';
+        if (t === 'direct') return '消息';
+        return t;
+    };
+
+    tbody.innerHTML = items.map(n => `
+        <tr>
+            <td><strong>${typeLabel(n.notif_type)}</strong></td>
+            <td>
+                ${n.title ? `<div style="font-weight:700; margin-bottom:0.2rem;">${escapeHtml(n.title)}</div>` : ''}
+                <div style="color:var(--text-main)">${escapeHtml(n.content)}</div>
+            </td>
+            <td>${formatDateTime(n.created_at)}</td>
+            <td>${n.is_read ? '<span style="color:var(--text-muted); font-weight:600;">已读</span>' : '<span style="color:var(--primary); font-weight:700;">未读</span>'}</td>
+            <td>
+                ${n.is_read ? '' : `<button class="btn default-btn sm-btn" onclick="markNotificationRead(${n.id})"><i class="fa-solid fa-check"></i> 已读</button>`}
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function loadNotifications() {
+    try {
+        const items = await apiCall('/notifications/my');
+        renderNotifications(items);
+    } catch (err) {
+        showToast(err.message, true);
+    }
+}
+
+window.markNotificationRead = async (id) => {
+    try {
+        await apiCall(`/notifications/${id}/read`, { method: 'PUT' });
+        await loadNotifications();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+};
+
+document.getElementById('mark-all-read-btn')?.addEventListener('click', async () => {
+    try {
+        await apiCall('/notifications/read-all', { method: 'PUT' });
+        await loadNotifications();
+        showToast('已标记全部已读');
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
+
+// ==== Message modal ====
+window.openMessageModal = (receiverId, receiverName, relatedCourseId = null) => {
+    document.getElementById('message-receiver-id').value = receiverId;
+    document.getElementById('message-related-course-id').value = relatedCourseId ?? '';
+    document.getElementById('message-receiver-label').textContent = receiverName ? `@${receiverName}` : '-';
+    document.getElementById('message-content').value = '';
+    document.getElementById('message-modal').classList.remove('hidden');
+};
+
+document.getElementById('send-message-btn')?.addEventListener('click', async () => {
+    try {
+        const receiverId = parseInt(document.getElementById('message-receiver-id').value);
+        const relatedCourseIdRaw = document.getElementById('message-related-course-id').value;
+        const relatedCourseId = relatedCourseIdRaw === '' ? null : parseInt(relatedCourseIdRaw);
+        const content = document.getElementById('message-content').value;
+
+        if (!receiverId) return showToast('请选择接收人', true);
+        if (!content || !content.trim()) return showToast('消息内容不能为空', true);
+
+        await apiCall('/notifications/direct', {
+            method: 'POST',
+            body: {
+                receiver_id: receiverId,
+                content,
+                related_course_id: relatedCourseId,
+            }
+        });
+
+        document.getElementById('message-modal').classList.add('hidden');
+        showToast('消息发送成功 / Message sent');
+        await loadNotifications();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
+
+// ==== Profile modal ====
+document.getElementById('profile-btn')?.addEventListener('click', async () => {
+    await loadMeAndFillUI();
+    document.getElementById('profile-modal').classList.remove('hidden');
+});
+
+document.getElementById('save-profile-btn')?.addEventListener('click', async () => {
+    try {
+        const name = document.getElementById('profile-name').value;
+        const phone = document.getElementById('profile-phone').value;
+        await apiCall('/profile/me', {
+            method: 'PUT',
+            body: {
+                name,
+                phone_number: phone ? phone.trim() : null,
+            }
+        });
+        showToast('个人信息已更新');
+        await loadMeAndFillUI();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
+
+document.getElementById('password-change-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        const current_password = document.getElementById('password-current').value;
+        const new_password = document.getElementById('password-new').value;
+        await apiCall('/profile/me/password', {
+            method: 'PUT',
+            body: { current_password, new_password }
+        });
+        showToast('密码修改成功');
+        e.target.reset();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
+
+document.getElementById('profile-avatar-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await apiCall('/profile/me/avatar', { method: 'POST', body: form });
+        showToast('头像已更新');
+        const avatarUrl = res.avatar_url;
+        const navAvatarImg = document.getElementById('nav-avatar-img');
+        const navAvatarIcon = document.getElementById('nav-avatar-icon');
+        const preview = document.getElementById('profile-avatar-preview');
+        if (avatarUrl) {
+            navAvatarImg.src = avatarUrl;
+            navAvatarImg.style.display = 'block';
+            navAvatarIcon.style.display = 'none';
+            preview.src = avatarUrl;
+        }
+    } catch (err) {
+        showToast(err.message, true);
+    } finally {
+        e.target.value = '';
+    }
+});
+
+// ==== Exports (CSV) ====
+function csvEscape(val) {
+    const s = String(val ?? '');
+    if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+    return s;
+}
+
+function downloadCSV(filename, rows) {
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+function exportStudentTimetable() {
+    if (!myCoursesData || myCoursesData.length === 0) {
+        showToast('暂无可导出的课表数据', true);
+        return;
+    }
+    const rows = [
+        ['课程名称', '教师', '上课时间', '上课地点', '学分', '成绩'],
+        ...myCoursesData.map(c => [
+            c.course_name,
+            c.teacher_name || '',
+            c.class_time || '',
+            c.class_location || '',
+            c.credits,
+            c.grade !== null && c.grade !== undefined ? c.grade : '',
+        ]),
+    ];
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCSV(`student_timetable_${stamp}.csv`, rows);
+}
+
+function exportStudentGrades() {
+    if (!myCoursesData || myCoursesData.length === 0) {
+        showToast('暂无可导出的成绩数据', true);
+        return;
+    }
+    const graded = myCoursesData.filter(c => c.grade !== null && c.grade !== undefined);
+    const rows = [
+        ['课程名称', '教师', '学分', '成绩'],
+        ...(graded.length ? graded : myCoursesData).map(c => [
+            c.course_name,
+            c.teacher_name || '',
+            c.credits,
+            c.grade !== null && c.grade !== undefined ? c.grade : '',
+        ]),
+    ];
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCSV(`student_grades_${stamp}.csv`, rows);
+}
+
+document.getElementById('export-timetable-btn')?.addEventListener('click', exportStudentTimetable);
+document.getElementById('export-grades-btn')?.addEventListener('click', exportStudentGrades);
+
+// ==== Admin announcement ====
+document.getElementById('announcement-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        const title = document.getElementById('announcement-title').value;
+        const content = document.getElementById('announcement-content').value;
+        await apiCall('/admin/announcements', {
+            method: 'POST',
+            body: { title, content }
+        });
+        showToast('公告已发送');
+        e.target.reset();
+        await loadNotifications();
+    } catch (err) {
+        showToast(err.message, true);
+    }
+});
 
 init();

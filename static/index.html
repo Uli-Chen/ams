@@ -56,13 +56,21 @@
                 </ul>
                 <div class="sidebar-footer">
                     <div class="user-badge">
-                        <div class="avatar"><i class="fa-solid fa-user-tie"></i></div>
+                        <div class="avatar">
+                            <img id="nav-avatar-img" src="" alt="avatar" style="display:none;">
+                            <i id="nav-avatar-icon" class="fa-solid fa-user-tie"></i>
+                        </div>
                         <div class="user-info">
                             <span id="nav-user-name" class="name">User</span>
                             <span id="nav-user-role" class="role">Role</span>
                         </div>
                     </div>
-                    <button id="logout-btn" class="btn text-btn"><i class="fa-solid fa-sign-out-alt"></i> 退出</button>
+                    <div class="sidebar-actions">
+                        <button id="profile-btn" class="btn text-btn">
+                            <i class="fa-solid fa-user-gear"></i> 个人信息
+                        </button>
+                        <button id="logout-btn" class="btn text-btn"><i class="fa-solid fa-sign-out-alt"></i> 退出</button>
+                    </div>
                 </div>
             </aside>
             
@@ -75,6 +83,27 @@
                 </header>
 
                 <div class="dashboard-scroll">
+                    <!-- 通知与消息（所有角色通用） -->
+                    <div class="panel" id="notifications-panel">
+                        <div class="panel-header flex-between">
+                            <h3>通知与消息 <span id="notifications-unread-count" style="color:var(--primary); font-weight:700;">0 未读</span></h3>
+                            <button class="btn default-btn sm-btn" id="mark-all-read-btn">
+                                <i class="fa-solid fa-check-double"></i> 全部已读
+                            </button>
+                        </div>
+                        <div class="panel-body p-0">
+                            <div class="table-scroll-container">
+                                <table class="solemn-table" id="notifications-table">
+                                    <thead>
+                                        <tr>
+                                            <th>类型</th><th>内容</th><th>时间</th><th>状态</th><th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- 管理员面板 -->
                     <div id="admin-dashboard" class="role-dashboard hidden">
@@ -193,6 +222,16 @@
                                                 <option value="">暂不分配 (None)</option>
                                             </select>
                                         </div>
+                                        <div class="form-row">
+                                            <div class="input-group flex-1">
+                                                <label>上课时间</label>
+                                                <input type="text" id="new-course-time" required placeholder="例如：Mon 10:00-12:00">
+                                            </div>
+                                            <div class="input-group flex-1">
+                                                <label>上课地点</label>
+                                                <input type="text" id="new-course-location" required placeholder="例如：Room 201">
+                                            </div>
+                                        </div>
                                         <button type="submit" class="btn primary-btn full-width">添加课程</button>
                                     </form>
                                 </div>
@@ -208,11 +247,32 @@
                                     <table class="solemn-table" id="admin-courses-table">
                                         <thead>
                                             <tr>
-                                                <th>编号</th><th>课程名称</th><th>学分</th><th>容量</th><th>授课教师</th><th>操作</th>
+                                                <th>编号</th><th>课程名称</th><th>学分</th><th>容量</th><th>上课时间</th><th>上课地点</th><th>授课教师</th><th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody></tbody>
                                     </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row">
+                            <div class="panel flex-1">
+                                <div class="panel-header flex-between">
+                                    <h3>系统公告 / System Announcement</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <form id="announcement-form" class="solemn-form">
+                                        <div class="input-group">
+                                            <label>公告标题</label>
+                                            <input type="text" id="announcement-title" required placeholder="例如：期末成绩已发布">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>公告内容</label>
+                                            <textarea id="announcement-content" rows="4" required style="width:100%; padding:0.6rem; border:1px solid var(--border-color); border-radius:6px; font-family: Inter;"></textarea>
+                                        </div>
+                                        <button type="submit" class="btn primary-btn full-width">发送全体公告</button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
@@ -245,7 +305,10 @@
                         <div id="teacher-course-detail" class="hidden">
                             <hr class="divider">
                             <div class="flex-between mb-2">
-                                <h2 id="teacher-detail-title" class="section-title">课程详情</h2>
+                                <div>
+                                    <h2 id="teacher-detail-title" class="section-title">课程详情</h2>
+                                    <p id="teacher-detail-schedule" class="text-muted" style="margin-top:0.25rem; color:var(--text-muted);"></p>
+                                </div>
                                 <button class="btn default-btn" id="close-detail-btn"><i class="fa-solid fa-arrow-left"></i> 返回</button>
                             </div>
                             
@@ -314,7 +377,7 @@
                                     <table class="solemn-table" id="student-my-courses-table">
                                         <thead>
                                             <tr>
-                                                <th>课程名称</th><th>教师</th><th>学分</th><th>成绩</th><th>操作</th>
+                                                <th>课程名称</th><th>教师</th><th>上课时间</th><th>上课地点</th><th>学分</th><th>成绩</th><th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody></tbody>
@@ -332,11 +395,39 @@
                                     <table class="solemn-table" id="student-all-courses-table">
                                         <thead>
                                             <tr>
-                                                <th>课程名称</th><th>教师</th><th>学分</th><th>余量</th><th>操作</th>
+                                                <th>课程名称</th><th>教师</th><th>上课时间</th><th>上课地点</th><th>学分</th><th>余量</th><th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody></tbody>
                                     </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row mt-2">
+                            <div class="panel flex-2">
+                                <div class="panel-header flex-between">
+                                    <h3>我的课表 / My Timetable</h3>
+                                    <div class="flex-between" style="gap:0.5rem;">
+                                        <button class="btn default-btn sm-btn" id="export-timetable-btn">
+                                            <i class="fa-solid fa-file-csv"></i> 导出课表
+                                        </button>
+                                        <button class="btn default-btn sm-btn" id="export-grades-btn">
+                                            <i class="fa-solid fa-file-csv"></i> 导出成绩
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="panel-body p-0">
+                                    <div class="table-scroll-container">
+                                        <table class="solemn-table" id="student-timetable-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>课程名称</th><th>教师</th><th>上课时间</th><th>上课地点</th><th>学分</th><th>成绩</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -348,6 +439,93 @@
     </div>
     
     
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="modal-card panel">
+            <div class="panel-header flex-between">
+                <h3>个人信息 / Profile</h3>
+                <button class="btn text-btn" onclick="document.getElementById('profile-modal').classList.add('hidden')">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="panel-body">
+                <div class="input-group">
+                    <label>头像</label>
+                    <input type="file" id="profile-avatar-input" accept="image/*">
+                    <div style="margin-top:0.75rem;">
+                        <img id="profile-avatar-preview" src="" alt="avatar preview" style="width:96px;height:96px;border-radius:50%;object-fit:cover;background:#f0f4f8;">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>姓名</label>
+                    <input type="text" id="profile-name" required>
+                </div>
+
+                <div class="input-group">
+                    <label>手机号</label>
+                    <input type="text" id="profile-phone" placeholder="请输入手机号（可选）">
+                </div>
+
+                <div class="flex-between mt-2">
+                    <button type="button" class="btn default-btn" onclick="document.getElementById('profile-modal').classList.add('hidden')">取消</button>
+                    <button type="button" class="btn primary-btn" id="save-profile-btn">保存个人信息</button>
+                </div>
+
+                <hr class="divider">
+
+                <div class="panel-header" style="background:transparent;">
+                    <h3 style="margin:0;">修改密码</h3>
+                </div>
+
+                <form id="password-change-form" class="solemn-form">
+                    <div class="input-group">
+                        <label>当前密码</label>
+                        <input type="password" id="password-current" required>
+                    </div>
+                    <div class="input-group">
+                        <label>新密码</label>
+                        <input type="password" id="password-new" required>
+                    </div>
+                    <div class="flex-between mt-2">
+                        <button type="submit" class="btn primary-btn">确认修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Modal -->
+    <div id="message-modal" class="modal-overlay hidden">
+        <div class="modal-card panel">
+            <div class="panel-header flex-between">
+                <h3>发送消息</h3>
+                <button class="btn text-btn" onclick="document.getElementById('message-modal').classList.add('hidden')">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="panel-body">
+                <div class="input-group">
+                    <label>接收人</label>
+                    <div id="message-receiver-label" style="color:var(--text-main); font-weight:600;">-</div>
+                </div>
+
+                <input type="hidden" id="message-receiver-id">
+                <input type="hidden" id="message-related-course-id">
+
+                <div class="input-group">
+                    <label>内容</label>
+                    <textarea id="message-content" rows="4" required style="width:100%; padding:0.6rem; border:1px solid var(--border-color); border-radius:6px; font-family: Inter;"></textarea>
+                </div>
+
+                <div class="flex-between mt-2">
+                    <button type="button" class="btn default-btn" onclick="document.getElementById('message-modal').classList.add('hidden')">取消</button>
+                    <button type="button" class="btn primary-btn" id="send-message-btn">发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Course Modal -->
     <div id="edit-course-modal" class="modal-overlay hidden">
         <div class="modal-card panel">
@@ -378,8 +556,51 @@
                             <option value="">暂不分配 (None)</option>
                         </select>
                     </div>
+                    <div class="form-row">
+                        <div class="input-group flex-1">
+                            <label>上课时间</label>
+                            <input type="text" id="edit-course-time-field" required placeholder="例如：Mon 10:00-12:00">
+                        </div>
+                        <div class="input-group flex-1">
+                            <label>上课地点</label>
+                            <input type="text" id="edit-course-location-field" required placeholder="例如：Room 201">
+                        </div>
+                    </div>
                     <div class="flex-between mt-2">
                         <button type="button" class="btn default-btn" onclick="document.getElementById('edit-course-modal').classList.add('hidden')">取消</button>
+                        <button type="submit" class="btn primary-btn">保存修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Teacher Edit Course Modal -->
+    <div id="teacher-edit-course-modal" class="modal-overlay hidden">
+        <div class="modal-card panel">
+            <div class="panel-header flex-between">
+                <h3>调整课程安排 / Edit My Course</h3>
+                <button class="btn text-btn" onclick="document.getElementById('teacher-edit-course-modal').classList.add('hidden')"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="panel-body">
+                <form id="teacher-edit-course-form" class="solemn-form">
+                    <input type="hidden" id="teacher-edit-course-id">
+                    <div class="input-group">
+                        <label>课程名称</label>
+                        <input type="text" id="teacher-edit-course-name" readonly>
+                    </div>
+                    <div class="form-row">
+                        <div class="input-group flex-1">
+                            <label>上课时间</label>
+                            <input type="text" id="teacher-edit-course-time" required placeholder="例如：Mon 10:00-12:00">
+                        </div>
+                        <div class="input-group flex-1">
+                            <label>上课地点</label>
+                            <input type="text" id="teacher-edit-course-location" required placeholder="例如：Room 201">
+                        </div>
+                    </div>
+                    <div class="flex-between mt-2">
+                        <button type="button" class="btn default-btn" onclick="document.getElementById('teacher-edit-course-modal').classList.add('hidden')">取消</button>
                         <button type="submit" class="btn primary-btn">保存修改</button>
                     </div>
                 </form>
