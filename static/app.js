@@ -14,6 +14,7 @@ let state = {
 let adminChartInst = null;
 let teacherChartInst = null;
 let studentChartInst = null;
+let chartWarningShown = false;
 
 // Cache for student exports / timetable
 let myCoursesData = [];
@@ -24,6 +25,21 @@ const viewDashboard = document.getElementById('dashboard-layout');
 const loginForm = document.getElementById('login-form');
 const toastEl = document.getElementById('toast');
 const toastMsg = document.getElementById('toast-msg');
+
+function getChartContext(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof canvas.getContext !== 'function') {
+        return null;
+    }
+    return canvas.getContext('2d');
+}
+
+function notifyChartUnavailable(detail) {
+    console.warn(detail);
+    if (chartWarningShown) return;
+    chartWarningShown = true;
+    showToast('Chart.js 未加载或图表节点缺失，已跳过图表渲染。', true);
+}
 
 function updateDateDisplay() {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -204,20 +220,28 @@ async function loadAdminData() {
         const roleCounts = { admin: 0, teacher: 0, student: 0 };
         users.forEach(u => { if(roleCounts[u.role] !== undefined) roleCounts[u.role]++; });
         
-        const ctx = document.getElementById('adminStatsChart').getContext('2d');
-        if (adminChartInst) adminChartInst.destroy();
-        adminChartInst = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: ['管理员 (Admin)', '教师 (Teacher)', '学生 (Student)'],
-                datasets: [{
-                    data: [roleCounts.admin, roleCounts.teacher, roleCounts.student],
-                    backgroundColor: ['#2c3e50', '#2b5797', '#e2e8f0'],
-                    borderWidth: 0
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
-        });
+        if (typeof window.Chart === 'function') {
+            const ctx = getChartContext('adminStatsChart');
+            if (ctx) {
+                if (adminChartInst) adminChartInst.destroy();
+                adminChartInst = new window.Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['管理员 (Admin)', '教师 (Teacher)', '学生 (Student)'],
+                        datasets: [{
+                            data: [roleCounts.admin, roleCounts.teacher, roleCounts.student],
+                            backgroundColor: ['#2c3e50', '#2b5797', '#e2e8f0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
+                });
+            } else {
+                notifyChartUnavailable('adminStatsChart canvas not found.');
+            }
+        } else {
+            notifyChartUnavailable('Chart.js is not loaded for admin chart.');
+        }
     } catch(err) { showToast(err.message, true); }
 }
 
@@ -417,25 +441,33 @@ window.viewCourseDetails = async (courseId, courseName) => {
             else grades['不及格(F)']++;
         });
 
-        const ctx = document.getElementById('teacherGradeChart').getContext('2d');
-        if (teacherChartInst) teacherChartInst.destroy();
-        teacherChartInst = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(grades),
-                datasets: [{
-                    label: '学生数量',
-                    data: Object.values(grades),
-                    backgroundColor: ['#27ae60', '#2b5797', '#f39c12', '#e74c3c', '#95a5a6']
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
-                plugins: { legend: { display: false } }
+        if (typeof window.Chart === 'function') {
+            const ctx = getChartContext('teacherGradeChart');
+            if (ctx) {
+                if (teacherChartInst) teacherChartInst.destroy();
+                teacherChartInst = new window.Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(grades),
+                        datasets: [{
+                            label: '学生数量',
+                            data: Object.values(grades),
+                            backgroundColor: ['#27ae60', '#2b5797', '#f39c12', '#e74c3c', '#95a5a6']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            } else {
+                notifyChartUnavailable('teacherGradeChart canvas not found.');
             }
-        });
+        } else {
+            notifyChartUnavailable('Chart.js is not loaded for teacher chart.');
+        }
 
     } catch(err) { showToast(err.message, true); }
 };
@@ -547,28 +579,36 @@ async function loadStudentData() {
         }
 
         // Student Visualization: Radar
-        const ctx = document.getElementById('studentRadarChart').getContext('2d');
-        if (studentChartInst) studentChartInst.destroy();
-        studentChartInst = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: labels.length > 0 ? labels : ['算法', '系统', '网络', '数据库', '数学'],
-                datasets: [{
-                    label: '各科成绩',
-                    data: datagrades.length > 0 ? datagrades : [0,0,0,0,0],
-                    backgroundColor: 'rgba(43, 87, 151, 0.2)',
-                    borderColor: '#2b5797',
-                    pointBackgroundColor: '#2b5797',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    r: { angleLines: { display: true }, suggestedMin: 0, suggestedMax: 100 }
-                }
+        if (typeof window.Chart === 'function') {
+            const ctx = getChartContext('studentRadarChart');
+            if (ctx) {
+                if (studentChartInst) studentChartInst.destroy();
+                studentChartInst = new window.Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: labels.length > 0 ? labels : ['算法', '系统', '网络', '数据库', '数学'],
+                        datasets: [{
+                            label: '各科成绩',
+                            data: datagrades.length > 0 ? datagrades : [0,0,0,0,0],
+                            backgroundColor: 'rgba(43, 87, 151, 0.2)',
+                            borderColor: '#2b5797',
+                            pointBackgroundColor: '#2b5797',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: { angleLines: { display: true }, suggestedMin: 0, suggestedMax: 100 }
+                        }
+                    }
+                });
+            } else {
+                notifyChartUnavailable('studentRadarChart canvas not found.');
             }
-        });
+        } else {
+            notifyChartUnavailable('Chart.js is not loaded for student chart.');
+        }
 
     } catch(err) { showToast(err.message, true); }
 }
@@ -651,7 +691,11 @@ function renderNotifications(items) {
     const typeLabel = (t) => {
         if (t === 'announcement') return '系统公告';
         if (t === 'enrollment') return '选课通知';
+        if (t === 'unenrollment') return '退选通知';
         if (t === 'grade') return '成绩通知';
+        if (t === 'course_update') return '课程变更';
+        if (t === 'course_assignment') return '课程分配';
+        if (t === 'course_cancelled') return '停课通知';
         if (t === 'direct') return '消息';
         return t;
     };

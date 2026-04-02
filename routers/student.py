@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from models import User, Course, Enrollment, RoleEnum
 from database import get_db
 from security import require_role
-from models import Notification
+from services.notification_service import queue_notification
 
 router = APIRouter()
 
@@ -45,26 +45,41 @@ async def enroll_course(course_id: int, db: AsyncSession = Depends(get_db), curr
 
     # Notify the teacher about successful enrollment
     if course.teacher_id is not None:
-        new_notif = Notification(
+        queue_notification(
+            db,
             sender_id=current_user.id,
             recipient_id=course.teacher_id,
             notif_type="enrollment",
             title="有新选课学生 / New Enrollment",
             content=f"{current_user.name} 已选修《{course.name}》",
             related_course_id=course.id,
-            is_read=False,
         )
-        db.add(new_notif)
 
     await db.commit()
     return {"message": "Enrolled successfully"}
 
 @router.delete("/courses/{course_id}/unenroll")
 async def unenroll_course(course_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_role([RoleEnum.student]))):
+    res_c = await db.execute(select(Course).where(Course.id == course_id))
+    course = res_c.scalars().first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
     res_e = await db.execute(select(Enrollment).where(Enrollment.course_id == course_id, Enrollment.student_id == current_user.id))
     enrollment = res_e.scalars().first()
     if not enrollment:
         raise HTTPException(status_code=400, detail="Not enrolled in this course")
+
+    if course.teacher_id is not None:
+        queue_notification(
+            db,
+            sender_id=current_user.id,
+            recipient_id=course.teacher_id,
+            notif_type="unenrollment",
+            title="学生退选通知 / Drop Notification",
+            content=f"{current_user.name} 已退选《{course.name}》",
+            related_course_id=course.id,
+        )
         
     await db.delete(enrollment)
     await db.commit()

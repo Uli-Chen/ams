@@ -9,3 +9,4 @@ passlib[bcrypt]
 pyjwt
 python-multipart
 greenlet
+python-dotenv

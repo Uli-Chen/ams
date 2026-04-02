@@ -7,6 +7,7 @@ from database import get_db
 from security import get_current_user, require_role
 from models import User, RoleEnum, Notification, Course, Enrollment
 from schemas import NotificationResponse, DirectMessageRequest
+from services.notification_service import queue_notification
 
 router = APIRouter()
 
@@ -158,17 +159,15 @@ async def send_direct(
     else:
         raise HTTPException(status_code=403, detail="Only teacher/student can send direct messages")
 
-    new_notif = Notification(
+    queue_notification(
+        db,
         sender_id=current_user.id,
         recipient_id=receiver_id,
         notif_type=notif_type,
         title=f"来自 {current_user.name}",
         content=content,
         related_course_id=related_course_id,
-        is_read=False,
     )
-    db.add(new_notif)
     await db.commit()
-    await db.refresh(new_notif)
     return {"message": "Message sent"}
 

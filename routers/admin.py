@@ -7,6 +7,7 @@ from schemas import UserCreate, UserResponse, CourseCreate, CourseResponse, Cour
 from database import get_db
 from security import require_role
 from routers.auth import get_password_hash
+from services.notification_service import queue_bulk_notifications, queue_notification
 
 router = APIRouter()
 
@@ -58,6 +59,22 @@ async def create_course(course: CourseCreate, db: AsyncSession = Depends(get_db)
             
     new_course = Course(**course_data)
     db.add(new_course)
+    await db.flush()
+
+    if teacher_id:
+        queue_notification(
+            db,
+            sender_id=current_user.id,
+            recipient_id=teacher_id,
+            notif_type="course_assignment",
+            title="新课程分配 / New Course Assigned",
+            content=(
+                f"您被分配教授《{new_course.name}》，"
+                f"时间：{new_course.class_time or '未设置'}，地点：{new_course.class_location or '未设置'}。"
+            ),
+            related_course_id=new_course.id,
+        )
+
     await db.commit()
     await db.refresh(new_course)
     return new_course
@@ -68,17 +85,110 @@ async def update_course(course_id: int, course: CourseUpdate, db: AsyncSession =
     target_course = res.scalars().first()
     if not target_course:
         raise HTTPException(status_code=404, detail="Course not found")
-        
+
+    old_name = target_course.name
+    old_credits = target_course.credits
+    old_capacity = target_course.capacity
+    old_teacher_id = target_course.teacher_id
+    old_time = target_course.class_time
+    old_location = target_course.class_location
+
     update_data = course.model_dump(exclude_unset=True)
-    
+
+    new_teacher: User | None = None
+    old_teacher: User | None = None
     if "teacher_id" in update_data and update_data["teacher_id"] is not None:
         res_t = await db.execute(select(User).where(User.id == update_data["teacher_id"], User.role == RoleEnum.teacher))
-        if not res_t.scalars().first():
+        new_teacher = res_t.scalars().first()
+        if not new_teacher:
             raise HTTPException(status_code=400, detail="Invalid teacher")
-            
+
+    if old_teacher_id is not None:
+        old_teacher_res = await db.execute(select(User).where(User.id == old_teacher_id, User.role == RoleEnum.teacher))
+        old_teacher = old_teacher_res.scalars().first()
+
     for key, value in update_data.items():
         setattr(target_course, key, value)
-        
+
+    change_details: list[str] = []
+    if "name" in update_data and old_name != target_course.name:
+        change_details.append(f"课程名称：{old_name} -> {target_course.name}")
+    if "credits" in update_data and old_credits != target_course.credits:
+        change_details.append(f"学分：{old_credits} -> {target_course.credits}")
+    if "capacity" in update_data and old_capacity != target_course.capacity:
+        change_details.append(f"容量：{old_capacity} -> {target_course.capacity}")
+    if "class_time" in update_data and old_time != target_course.class_time:
+        change_details.append(f"上课时间：{old_time or '未设置'} -> {target_course.class_time or '未设置'}")
+    if "class_location" in update_data and old_location != target_course.class_location:
+        change_details.append(f"上课地点：{old_location or '未设置'} -> {target_course.class_location or '未设置'}")
+
+    teacher_changed = "teacher_id" in update_data and old_teacher_id != target_course.teacher_id
+    if teacher_changed:
+        old_teacher_name = old_teacher.name if old_teacher else "未分配"
+        if target_course.teacher_id is None:
+            new_teacher_name = "未分配"
+        else:
+            new_teacher_name = new_teacher.name if new_teacher else f"教师#{target_course.teacher_id}"
+        change_details.append(f"授课教师：{old_teacher_name} -> {new_teacher_name}")
+
+    if change_details:
+        res_students = await db.execute(select(Enrollment.student_id).where(Enrollment.course_id == target_course.id))
+        student_ids = [row[0] for row in res_students.all()]
+        queue_bulk_notifications(
+            db,
+            sender_id=current_user.id,
+            recipient_ids=student_ids,
+            notif_type="course_update",
+            title="课程信息更新 / Course Updated",
+            content=f"您选修的《{target_course.name}》信息已更新：" + "；".join(change_details),
+            related_course_id=target_course.id,
+        )
+
+    if teacher_changed:
+        if old_teacher_id is not None:
+            if target_course.teacher_id is None:
+                old_teacher_content = f"《{target_course.name}》已取消您的授课分配。"
+            else:
+                old_teacher_content = (
+                    f"《{target_course.name}》已不再由您授课，"
+                    f"现任教师为 {new_teacher.name if new_teacher else f'教师#{target_course.teacher_id}'}。"
+                )
+            queue_notification(
+                db,
+                sender_id=current_user.id,
+                recipient_id=old_teacher_id,
+                notif_type="course_assignment",
+                title="课程分配变更 / Assignment Changed",
+                content=old_teacher_content,
+                related_course_id=target_course.id,
+            )
+
+        if target_course.teacher_id is not None:
+            queue_notification(
+                db,
+                sender_id=current_user.id,
+                recipient_id=target_course.teacher_id,
+                notif_type="course_assignment",
+                title="课程分配变更 / Assignment Changed",
+                content=(
+                    f"您被分配教授《{target_course.name}》，"
+                    f"时间：{target_course.class_time or '未设置'}，"
+                    f"地点：{target_course.class_location or '未设置'}。"
+                ),
+                related_course_id=target_course.id,
+            )
+
+    elif change_details and target_course.teacher_id is not None:
+        queue_notification(
+            db,
+            sender_id=current_user.id,
+            recipient_id=target_course.teacher_id,
+            notif_type="course_update",
+            title="课程信息更新 / Course Updated",
+            content=f"您教授的《{target_course.name}》信息已更新：" + "；".join(change_details),
+            related_course_id=target_course.id,
+        )
+
     await db.commit()
     await db.refresh(target_course)
     return target_course
@@ -89,7 +199,30 @@ async def delete_course(course_id: int, db: AsyncSession = Depends(get_db), curr
     course = res.scalars().first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-        
+
+    res_students = await db.execute(select(Enrollment.student_id).where(Enrollment.course_id == course_id))
+    student_ids = [row[0] for row in res_students.all()]
+    queue_bulk_notifications(
+        db,
+        sender_id=current_user.id,
+        recipient_ids=student_ids,
+        notif_type="course_cancelled",
+        title="课程停开通知 / Course Cancelled",
+        content=f"课程《{course.name}》已被教务删除/停开，请留意选课安排调整。",
+        related_course_id=None,
+    )
+
+    if course.teacher_id is not None:
+        queue_notification(
+            db,
+            sender_id=current_user.id,
+            recipient_id=course.teacher_id,
+            notif_type="course_cancelled",
+            title="课程停开通知 / Course Cancelled",
+            content=f"您负责的课程《{course.name}》已被删除/停开。",
+            related_course_id=None,
+        )
+
     await db.execute(delete(Enrollment).where(Enrollment.course_id == course_id))
     await db.execute(delete(Course).where(Course.id == course_id))
     await db.commit()

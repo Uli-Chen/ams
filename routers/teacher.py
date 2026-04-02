@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import User, Course, Enrollment, RoleEnum, Notification
+from models import User, Course, Enrollment, RoleEnum
 from schemas import CourseResponse, EnrollmentResponse, TeacherCourseUpdate
 from database import get_db
 from security import require_role
 from pydantic import BaseModel, Field
+from services.notification_service import queue_bulk_notifications, queue_notification
 
 router = APIRouter()
 
@@ -34,12 +35,36 @@ async def update_teacher_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
+    old_time = course.class_time
+    old_location = course.class_location
+
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No changes provided")
 
     for key, value in update_data.items():
         setattr(course, key, value)
+
+    detail_parts = []
+    if "class_time" in update_data and old_time != course.class_time:
+        detail_parts.append(f"上课时间：{old_time or '未设置'} -> {course.class_time or '未设置'}")
+    if "class_location" in update_data and old_location != course.class_location:
+        detail_parts.append(f"上课地点：{old_location or '未设置'} -> {course.class_location or '未设置'}")
+
+    if detail_parts:
+        res_students = await db.execute(
+            select(Enrollment.student_id).where(Enrollment.course_id == course.id)
+        )
+        student_ids = [row[0] for row in res_students.all()]
+        queue_bulk_notifications(
+            db,
+            sender_id=current_user.id,
+            recipient_ids=student_ids,
+            notif_type="course_update",
+            title="课程安排变更 / Schedule Updated",
+            content=f"您选修的《{course.name}》课程安排已更新：" + "；".join(detail_parts),
+            related_course_id=course.id,
+        )
 
     course.teacher_name = current_user.name
     await db.commit()
@@ -93,19 +118,28 @@ async def update_grade(enrollment_id: int, payload: GradeUpdate, db: AsyncSessio
     old_grade = enrollment.grade
     enrollment.grade = payload.grade
 
-    # Notify the student only when grade is first published (old was null)
-    if old_grade is None:
-        new_notif = Notification(
+    # Notify student when grade is first posted or changed later.
+    if old_grade != payload.grade:
+        if old_grade is None:
+            title = "成绩已公布 / Grade Posted"
+            content = f"课程《{enrollment.course.name}》成绩已公布：{payload.grade}"
+        else:
+            title = "成绩已更新 / Grade Updated"
+            content = (
+                f"课程《{enrollment.course.name}》成绩已更新："
+                f"{old_grade} -> {payload.grade}"
+            )
+
+        queue_notification(
+            db,
             sender_id=current_user.id,
             recipient_id=enrollment.student_id,
             notif_type="grade",
-            title="成绩已公布 / Grade Posted",
-            content=f"课程 {enrollment.course.name} 成绩：{payload.grade}",
+            title=title,
+            content=content,
             related_course_id=enrollment.course_id,
             related_enrollment_id=enrollment.id,
-            is_read=False,
         )
-        db.add(new_notif)
 
     await db.commit()
     return {"message": "Grade updated"}

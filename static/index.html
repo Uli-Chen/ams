@@ -313,7 +313,7 @@
                             </div>
                             
                             <div class="content-row">
-                                <div class="panel flex-2">
+                                <div class="panel flex-2" id="teacher-grade-panel">
                                     <div class="panel-header">
                                         <h3>成绩分布 / Grade Distribution</h3>
                                     </div>
@@ -322,19 +322,21 @@
                                     </div>
                                 </div>
                                 
-                                <div class="panel flex-3">
+                                <div class="panel flex-3" id="teacher-students-panel">
                                     <div class="panel-header">
                                         <h3>学生名单 / Enrolled Students</h3>
                                     </div>
                                     <div class="panel-body p-0">
-                                        <table class="solemn-table" id="teacher-students-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>学号</th><th>姓名</th><th>成绩</th><th>操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody></tbody>
-                                        </table>
+                                        <div class="table-scroll-container">
+                                            <table class="solemn-table" id="teacher-students-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>学号</th><th>姓名</th><th>成绩</th><th>操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody></tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

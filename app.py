@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from routers import auth, admin, teacher, student, profile, notifications
 import uvicorn
 import os
+from settings import APP_HOST, APP_PORT, APP_RELOAD
 
 app = FastAPI(title="Teaching Management System")
 
@@ -28,4 +29,4 @@ async def root():
     return FileResponse("static/index.html")
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host=APP_HOST, port=APP_PORT, reload=APP_RELOAD)
