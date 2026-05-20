@@ -112,7 +112,17 @@ APP_PORT=8000
 APP_RELOAD=true
 ```
 
-### 3.3 初始化与启动
+### 3.3 启动 MySQL（Docker）
+
+本地不需要安装 MySQL，直接用 Docker Compose 启动数据库：
+
+```bash
+docker compose up -d mysql
+```
+
+数据库数据会保存在 Docker volume `ams_mysql_data` 中。
+
+### 3.4 初始化与启动
 
 ```bash
 python init_db.py
@@ -134,4 +144,3 @@ http://127.0.0.1:<APP_PORT>
 - 业务链路完整：从选课、授课、评分到通知闭环。
 - 工程质量提升：配置集中、权限统一、通知服务抽象。
 - 可演示可扩展：支持批量测试数据，便于后续继续迭代（如通知偏好、消息聚合、审计日志）。
-
