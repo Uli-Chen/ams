@@ -19,6 +19,24 @@ let chartWarningShown = false;
 // Cache for student exports / timetable
 let myCoursesData = [];
 
+const ROLE_COPY = {
+    admin: {
+        kicker: 'Admin Workspace',
+        title: '系统运营总览',
+        subtitle: '集中管理用户、课程容量、公告和关键数据概况。'
+    },
+    teacher: {
+        kicker: 'Teacher Studio',
+        title: '教师授课工作台',
+        subtitle: '快速查看课程安排、学生名单、成绩分布和课程消息。'
+    },
+    student: {
+        kicker: 'Student Center',
+        title: '学生学习中心',
+        subtitle: '跟踪选课、课表、成绩表现，并与任课教师保持联系。'
+    }
+};
+
 // Elements
 const viewLogin = document.getElementById('login-view');
 const viewDashboard = document.getElementById('dashboard-layout');
@@ -39,6 +57,24 @@ function notifyChartUnavailable(detail) {
     if (chartWarningShown) return;
     chartWarningShown = true;
     showToast('Chart.js 未加载或图表节点缺失，已跳过图表渲染。', true);
+}
+
+function setRoleOverview(role) {
+    const copy = ROLE_COPY[role] || ROLE_COPY.student;
+    document.getElementById('role-overview-kicker').textContent = copy.kicker;
+    document.getElementById('role-overview-title').textContent = copy.title;
+    document.getElementById('role-overview-subtitle').textContent = copy.subtitle;
+}
+
+function renderOverviewMetrics(items) {
+    const target = document.getElementById('overview-metrics');
+    if (!target) return;
+    target.innerHTML = items.map(item => `
+        <div class="overview-metric">
+            <span>${item.label}</span>
+            <strong>${item.value}</strong>
+        </div>
+    `).join('');
 }
 
 function updateDateDisplay() {
@@ -109,6 +145,14 @@ loginForm.addEventListener('submit', async (e) => {
     }
 });
 
+document.querySelectorAll('.demo-login-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('username').value = btn.dataset.username;
+        document.getElementById('password').value = btn.dataset.password;
+        loginForm.requestSubmit();
+    });
+});
+
 document.getElementById('logout-btn').addEventListener('click', logout);
 
 function logout() {
@@ -143,6 +187,12 @@ async function showDashboard() {
     const activeDash = document.getElementById(`${state.role}-dashboard`);
     activeDash.classList.remove('hidden');
     activeDash.classList.add('active');
+    setRoleOverview(state.role);
+    renderOverviewMetrics([
+        { label: '当前身份', value: state.role === 'admin' ? '管理员' : (state.role === 'teacher' ? '教师' : '学生') },
+        { label: '工作台', value: '已就绪' },
+        { label: '数据源', value: 'MySQL' }
+    ]);
     
     if (state.role === 'admin') loadAdminData();
     if (state.role === 'teacher') loadTeacherData();
@@ -181,6 +231,57 @@ window.renderAdminUsers = () => {
     `).join('');
 };
 
+function pct(part, total) {
+    if (!total || total <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
+}
+
+function gradeTone(grade) {
+    if (grade === null || grade === undefined) return { text: '未录入', color: '#95a5a6' };
+    if (grade >= 90) return { text: '优秀', color: '#27ae60' };
+    if (grade >= 75) return { text: '良好', color: '#2b5797' };
+    if (grade >= 60) return { text: '及格', color: '#b0754c' };
+    return { text: '待提升', color: '#e74c3c' };
+}
+
+function parseWeekday(classTime) {
+    const value = String(classTime || '').toLowerCase();
+    const entries = [
+        ['mon', '周一'], ['monday', '周一'], ['周一', '周一'], ['星期一', '周一'],
+        ['tue', '周二'], ['tuesday', '周二'], ['周二', '周二'], ['星期二', '周二'],
+        ['wed', '周三'], ['wednesday', '周三'], ['周三', '周三'], ['星期三', '周三'],
+        ['thu', '周四'], ['thursday', '周四'], ['周四', '周四'], ['星期四', '周四'],
+        ['fri', '周五'], ['friday', '周五'], ['周五', '周五'], ['星期五', '周五'],
+    ];
+    const found = entries.find(([key]) => value.includes(key));
+    return found ? found[1] : '其他';
+}
+
+function renderAdminCourseInsights(courses) {
+    const target = document.getElementById('admin-course-insights');
+    if (!target) return;
+    const shown = courses.slice(0, 6);
+    if (shown.length === 0) {
+        target.innerHTML = '<p class="text-muted">暂无课程数据。</p>';
+        return;
+    }
+    target.innerHTML = shown.map(c => {
+        const enrolled = c.enrolled_count ?? 0;
+        const usedPct = pct(enrolled, c.capacity);
+        return `
+            <div class="insight-card">
+                <h4>${escapeHtml(c.name)}</h4>
+                <div class="text-muted">${escapeHtml(c.teacher_name || '未分配教师')} · ${c.credits} 学分</div>
+                <div class="capacity-bar"><span style="width:${usedPct}%"></span></div>
+                <div class="flex-between">
+                    <span class="text-muted">${enrolled}/${c.capacity} 已选</span>
+                    <span class="course-tag"><i class="fa-solid fa-chair"></i> 余量 ${c.remaining_capacity ?? c.capacity}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 async function loadAdminData() {
     try {
         const [courses, users] = await Promise.all([
@@ -191,9 +292,17 @@ async function loadAdminData() {
         document.getElementById('admin-total-courses').textContent = courses.length;
         document.getElementById('admin-total-users').textContent = users.length;
         adminUsersData = users;
+        const enrolledTotal = courses.reduce((sum, c) => sum + (c.enrolled_count ?? 0), 0);
+        const capacityTotal = courses.reduce((sum, c) => sum + (c.capacity ?? 0), 0);
+        renderOverviewMetrics([
+            { label: '用户总数', value: users.length },
+            { label: '课程总数', value: courses.length },
+            { label: '容量使用', value: `${pct(enrolledTotal, capacityTotal)}%` }
+        ]);
         
         // Populate User Table
         renderAdminUsers();
+        renderAdminCourseInsights(courses);
         
         const teachers = users.filter(u => u.role === 'teacher');
         const teacherSelect = document.getElementById('new-course-teacher');
@@ -347,6 +456,13 @@ async function loadTeacherData() {
     try {
         const courses = await apiCall('/teacher/my-courses');
         document.getElementById('teacher-total-courses').textContent = courses.length;
+        const scheduled = courses.filter(c => c.class_time && c.class_location).length;
+        const credits = courses.reduce((sum, c) => sum + (c.credits || 0), 0);
+        renderOverviewMetrics([
+            { label: '授课课程', value: courses.length },
+            { label: '已排课', value: scheduled },
+            { label: '总学分', value: credits }
+        ]);
         const grid = document.getElementById('teacher-courses-grid');
         
         if (courses.length === 0) {
@@ -357,7 +473,11 @@ async function loadTeacherData() {
         grid.innerHTML = courses.map(c => `
             <div class="course-card">
                 <h4><i class="fa-solid fa-book"></i> ${c.name}</h4>
-                <p>学分: ${c.credits} | ${c.class_time || '-'} | ${c.class_location || '-'}</p>
+                <div class="course-meta">
+                    <span><i class="fa-solid fa-award"></i> ${c.credits} 学分</span>
+                    <span><i class="fa-solid fa-clock"></i> ${c.class_time || '未设置时间'}</span>
+                    <span><i class="fa-solid fa-location-dot"></i> ${c.class_location || '未设置地点'}</span>
+                </div>
                 <div class="flex-between" style="gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
                     <button class="btn default-btn sm-btn" onclick="openTeacherEditCourseModal(${c.id}, '${c.name.replace(/'/g, "\\'")}', '${(c.class_time || '').replace(/'/g, "\\'")}', '${(c.class_location || '').replace(/'/g, "\\'")}')">
                         调整安排
@@ -499,6 +619,65 @@ window.updateGrade = async (enrollmentId, btn) => {
 };
 
 // ==== Student ====
+function renderStudentCourseMarket(allCourses, myCourseIds) {
+    const target = document.getElementById('student-course-market');
+    if (!target) return;
+    if (allCourses.length === 0) {
+        target.innerHTML = '<p class="text-muted">暂无可选课程。</p>';
+        return;
+    }
+    target.innerHTML = allCourses.map(c => {
+        const enrolled = c.enrolled_count ?? 0;
+        const remaining = c.remaining_capacity ?? c.capacity;
+        const usedPct = pct(enrolled, c.capacity);
+        const selected = myCourseIds.has(c.id);
+        return `
+            <div class="market-card">
+                <h4>${escapeHtml(c.name)}</h4>
+                <div class="course-meta">
+                    <span><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(c.teacher_name || '未分配教师')}</span>
+                    <span><i class="fa-solid fa-clock"></i> ${escapeHtml(c.class_time || '时间待定')}</span>
+                    <span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(c.class_location || '地点待定')}</span>
+                </div>
+                <div class="capacity-bar"><span style="width:${usedPct}%"></span></div>
+                <div class="market-card-footer">
+                    <span class="course-tag"><i class="fa-solid fa-book-open"></i> ${c.credits} 学分 · 余量 ${remaining}</span>
+                    ${selected
+                        ? '<span class="btn success-btn sm-btn" style="pointer-events:none;"><i class="fa-solid fa-check"></i> 已选</span>'
+                        : `<button class="btn default-btn sm-btn" onclick="enrollCourse(${c.id})"><i class="fa-solid fa-plus"></i> 选课</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderWeeklyTimetable(myCourses) {
+    const target = document.getElementById('student-weekly-timetable');
+    if (!target) return;
+    const days = ['周一', '周二', '周三', '周四', '周五'];
+    const grouped = Object.fromEntries(days.map(day => [day, []]));
+    myCourses.forEach(course => {
+        const day = parseWeekday(course.class_time);
+        if (grouped[day]) grouped[day].push(course);
+    });
+    target.innerHTML = days.map(day => `
+        <div class="week-column">
+            <header>${day}</header>
+            ${grouped[day].length
+                ? grouped[day].map(c => `
+                    <div class="week-course">
+                        <strong>${escapeHtml(c.course_name)}</strong>
+                        <span>${escapeHtml(c.class_time || '时间待定')}</span>
+                        <span>${escapeHtml(c.class_location || '地点待定')}</span>
+                    </div>
+                `).join('')
+                : '<div class="week-empty">暂无课程</div>'
+            }
+        </div>
+    `).join('');
+}
+
 async function loadStudentData() {
     try {
         const [allCourses, myCourses] = await Promise.all([
@@ -516,6 +695,7 @@ async function loadStudentData() {
             tbodyMy.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#7f8c8d;">你还未选修任何课程 / No enrollments yet.</td></tr>`;
         } else {
             tbodyMy.innerHTML = myCourses.map(c => {
+                const tone = gradeTone(c.grade);
                 if (c.grade !== null) {
                     earn += c.credits;
                     totalGradePoints += c.grade;
@@ -530,7 +710,7 @@ async function loadStudentData() {
                     <td>${c.class_time || '-'}</td>
                     <td>${c.class_location || '-'}</td>
                     <td>${c.credits}</td>
-                    <td>${c.grade !== null ? `<strong style="color:var(--primary)">${c.grade}</strong>` : '<span style="color:#bdc3c7">-</span>'}</td>
+                    <td>${c.grade !== null ? `<strong style="color:${tone.color}">${c.grade} · ${tone.text}</strong>` : '<span style="color:#bdc3c7">未录入</span>'}</td>
                     <td>
                         <button class="btn danger-btn sm-btn" onclick="unenrollCourse(${c.course_id})">退选 (Drop)</button>
                         ${c.teacher_id ? `<button class="btn default-btn sm-btn" style="margin-left:0.5rem;" onclick="openMessageModal(${c.teacher_id}, '${(c.teacher_name || '').replace(/'/g, "\\'")}', ${c.course_id})">消息老师</button>` : ''}
@@ -541,8 +721,14 @@ async function loadStudentData() {
         
         document.getElementById('student-total-credits').textContent = earn;
         document.getElementById('student-gpa').textContent = gradedCount > 0 ? (totalGradePoints / gradedCount).toFixed(1) : '-';
+        renderOverviewMetrics([
+            { label: '已选课程', value: myCourses.length },
+            { label: '已获学分', value: earn },
+            { label: '平均成绩', value: gradedCount > 0 ? (totalGradePoints / gradedCount).toFixed(1) : '-' }
+        ]);
         
         const tbodyAll = document.querySelector('#student-all-courses-table tbody');
+        renderStudentCourseMarket(allCourses, myCourseIds);
         tbodyAll.innerHTML = allCourses.map(c => `
             <tr>
                 <td><strong>${c.name}</strong></td>
@@ -562,6 +748,7 @@ async function loadStudentData() {
 
         // Timetable
         myCoursesData = myCourses;
+        renderWeeklyTimetable(myCourses);
         const tbodyTT = document.querySelector('#student-timetable-table tbody');
         if(myCourses.length === 0) {
             tbodyTT.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#7f8c8d;">暂无课表数据</td></tr>`;
@@ -679,41 +866,46 @@ async function loadMeAndFillUI() {
 }
 
 function renderNotifications(items) {
-    const tbody = document.querySelector('#notifications-table tbody');
+    const feed = document.getElementById('notifications-feed');
     const unread = items.filter(n => !n.is_read).length;
     document.getElementById('notifications-unread-count').textContent = `${unread} 未读`;
 
     if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">暂无通知 / No notifications</td></tr>`;
+        feed.innerHTML = `<div class="week-empty">暂无通知 / No notifications</div>`;
         return;
     }
 
-    const typeLabel = (t) => {
-        if (t === 'announcement') return '系统公告';
-        if (t === 'enrollment') return '选课通知';
-        if (t === 'unenrollment') return '退选通知';
-        if (t === 'grade') return '成绩通知';
-        if (t === 'course_update') return '课程变更';
-        if (t === 'course_assignment') return '课程分配';
-        if (t === 'course_cancelled') return '停课通知';
-        if (t === 'direct') return '消息';
-        return t;
+    const typeMeta = (t) => {
+        const map = {
+            announcement: ['系统公告', 'fa-bullhorn'],
+            enrollment: ['选课通知', 'fa-circle-plus'],
+            unenrollment: ['退选通知', 'fa-circle-minus'],
+            grade: ['成绩通知', 'fa-chart-line'],
+            course_update: ['课程变更', 'fa-calendar-days'],
+            course_assignment: ['课程分配', 'fa-chalkboard-user'],
+            course_cancelled: ['停课通知', 'fa-triangle-exclamation'],
+            direct: ['消息', 'fa-envelope']
+        };
+        return map[t] || [t, 'fa-circle-info'];
     };
 
-    tbody.innerHTML = items.map(n => `
-        <tr>
-            <td><strong>${typeLabel(n.notif_type)}</strong></td>
-            <td>
-                ${n.title ? `<div style="font-weight:700; margin-bottom:0.2rem;">${escapeHtml(n.title)}</div>` : ''}
-                <div style="color:var(--text-main)">${escapeHtml(n.content)}</div>
-            </td>
-            <td>${formatDateTime(n.created_at)}</td>
-            <td>${n.is_read ? '<span style="color:var(--text-muted); font-weight:600;">已读</span>' : '<span style="color:var(--primary); font-weight:700;">未读</span>'}</td>
-            <td>
-                ${n.is_read ? '' : `<button class="btn default-btn sm-btn" onclick="markNotificationRead(${n.id})"><i class="fa-solid fa-check"></i> 已读</button>`}
-            </td>
-        </tr>
-    `).join('');
+    feed.innerHTML = items.map(n => {
+        const [label, icon] = typeMeta(n.notif_type);
+        return `
+            <article class="notification-item ${n.is_read ? '' : 'unread'}">
+                <div class="notification-icon"><i class="fa-solid ${icon}"></i></div>
+                <div class="notification-copy">
+                    <h4>${escapeHtml(n.title || label)}</h4>
+                    <p>${escapeHtml(n.content)}</p>
+                    <div class="notification-meta">${label}${n.sender_name ? ` · 来自 ${escapeHtml(n.sender_name)}` : ''} · ${formatDateTime(n.created_at)}</div>
+                </div>
+                <div class="notification-actions">
+                    ${n.is_read ? '<span class="read-pill">已读</span>' : '<span class="unread-pill">未读</span>'}
+                    ${n.is_read ? '' : `<button class="btn default-btn sm-btn" onclick="markNotificationRead(${n.id})"><i class="fa-solid fa-check"></i> 标记已读</button>`}
+                </div>
+            </article>
+        `;
+    }).join('');
 }
 
 async function loadNotifications() {

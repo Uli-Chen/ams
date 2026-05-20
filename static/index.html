@@ -19,14 +19,33 @@
             <div class="login-split">
                 <div class="login-branding">
                     <div class="branding-content">
+                        <div class="brand-kicker">FRONTEND COURSE DESIGN</div>
                         <h1>教务管理系统</h1>
-                        <p>Academic Management System</p>
+                        <p>一个面向管理员、教师、学生的直观型校园工作台</p>
+                        <div class="hero-highlights">
+                            <div>
+                                <strong>3</strong>
+                                <span>角色视图</span>
+                            </div>
+                            <div>
+                                <strong>6+</strong>
+                                <span>核心模块</span>
+                            </div>
+                            <div>
+                                <strong>Live</strong>
+                                <span>真实数据</span>
+                            </div>
+                        </div>
                         <div class="branding-decoration"></div>
                     </div>
                 </div>
                 <div class="login-form-container">
                     <div class="login-card">
-                        <h2>用户登录 / Sign In</h2>
+                        <div class="login-card-header">
+                            <span class="eyebrow">AMS Console</span>
+                            <h2>用户登录 / Sign In</h2>
+                            <p>选择演示身份，快速进入对应工作台。</p>
+                        </div>
                         <form id="login-form">
                             <div class="input-group">
                                 <label for="username"><i class="fa-solid fa-user"></i> 账号 (Username)</label>
@@ -39,6 +58,20 @@
                             <button type="submit" class="btn primary-btn">进入系统</button>
                             <div id="login-error" class="error-msg"></div>
                         </form>
+                        <div class="demo-access">
+                            <button type="button" class="demo-login-btn" data-username="admin" data-password="admin123">
+                                <i class="fa-solid fa-user-shield"></i>
+                                <span>管理员体验</span>
+                            </button>
+                            <button type="button" class="demo-login-btn" data-username="teacher1" data-password="teacher123">
+                                <i class="fa-solid fa-chalkboard-user"></i>
+                                <span>教师体验</span>
+                            </button>
+                            <button type="button" class="demo-login-btn" data-username="student1" data-password="student123">
+                                <i class="fa-solid fa-graduation-cap"></i>
+                                <span>学生体验</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -83,6 +116,15 @@
                 </header>
 
                 <div class="dashboard-scroll">
+                    <section class="role-overview" id="role-overview">
+                        <div>
+                            <span class="eyebrow" id="role-overview-kicker">Overview</span>
+                            <h1 id="role-overview-title">教务工作台</h1>
+                            <p id="role-overview-subtitle">集中处理课程、通知与学习进度。</p>
+                        </div>
+                        <div class="overview-metrics" id="overview-metrics"></div>
+                    </section>
+
                     <!-- 通知与消息（所有角色通用） -->
                     <div class="panel" id="notifications-panel">
                         <div class="panel-header flex-between">
@@ -91,17 +133,8 @@
                                 <i class="fa-solid fa-check-double"></i> 全部已读
                             </button>
                         </div>
-                        <div class="panel-body p-0">
-                            <div class="table-scroll-container">
-                                <table class="solemn-table" id="notifications-table">
-                                    <thead>
-                                        <tr>
-                                            <th>类型</th><th>内容</th><th>时间</th><th>状态</th><th>操作</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
+                        <div class="panel-body">
+                            <div class="notification-feed" id="notifications-feed"></div>
                         </div>
                     </div>
                     
@@ -234,6 +267,17 @@
                                         </div>
                                         <button type="submit" class="btn primary-btn full-width">添加课程</button>
                                     </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-row">
+                            <div class="panel flex-1">
+                                <div class="panel-header flex-between">
+                                    <h3>课程容量概览 / Capacity Snapshot</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <div class="course-insights" id="admin-course-insights"></div>
                                 </div>
                             </div>
                         </div>
@@ -393,7 +437,10 @@
                                 <div class="panel-header">
                                     <h3>可选课程 / Available Courses</h3>
                                 </div>
-                                <div class="panel-body p-0">
+                                <div class="panel-body">
+                                    <div class="course-market" id="student-course-market"></div>
+                                </div>
+                                <div class="panel-body p-0 compact-table-body">
                                     <table class="solemn-table" id="student-all-courses-table">
                                         <thead>
                                             <tr>
@@ -419,7 +466,10 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="panel-body p-0">
+                                <div class="panel-body">
+                                    <div class="week-board" id="student-weekly-timetable"></div>
+                                </div>
+                                <div class="panel-body p-0 compact-table-body">
                                     <div class="table-scroll-container">
                                         <table class="solemn-table" id="student-timetable-table">
                                             <thead>
